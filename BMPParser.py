@@ -9,6 +9,24 @@ class BMPParser:
         self.file_header = {}
         self.info_header = {}
         
+    def bytes_to_uint16_le(self, data, offset=0):
+        return data[offset] + (data[offset + 1] << 8)
+    
+    def bytes_to_uint32_le(self, data, offset=0):
+        
+        return (data[offset] + 
+                (data[offset + 1] << 8) + 
+                (data[offset + 2] << 16) + 
+                (data[offset + 3] << 24))
+    
+    def bytes_to_int32_le(self, data, offset=0):
+        """Convert 4 bytes to signed 32-bit integer (little-endian)"""
+        value = self.bytes_to_uint32_le(data, offset)
+        # Handle two's complement for negative numbers
+        if value >= 2**31:
+            value -= 2**32
+        return value
+    
     def parse(self):
         """Parse the BMP file and extract header information"""
         try:
@@ -18,14 +36,27 @@ class BMPParser:
                 if len(file_header_data) < 14:
                     raise ValueError("Invalid BMP file: too short")
                 
-                # Parse file header
-                signature, file_size, reserved1, reserved2, data_offset = struct.unpack('<2sIHHI', file_header_data)
+                # Parse file header manually
+                # Bytes 0-1: Signature
+                signature = chr(file_header_data[0]) + chr(file_header_data[1])
                 
-                if signature != b'BM':
+                if signature != 'BM':
                     raise ValueError("Not a valid BMP file")
                 
+                # Bytes 2-5: File size (little-endian)
+                file_size = self.bytes_to_uint32_le(file_header_data, 2)
+                
+                # Bytes 6-7: Reserved 1
+                reserved1 = self.bytes_to_uint16_le(file_header_data, 6)
+                
+                # Bytes 8-9: Reserved 2
+                reserved2 = self.bytes_to_uint16_le(file_header_data, 8)
+                
+                # Bytes 10-13: Data offset
+                data_offset = self.bytes_to_uint32_le(file_header_data, 10)
+                
                 self.file_header = {
-                    'signature': signature.decode('ascii'),
+                    'signature': signature,
                     'file_size': file_size,
                     'reserved1': reserved1,
                     'reserved2': reserved2,
@@ -37,7 +68,7 @@ class BMPParser:
                 if len(info_size_data) < 4:
                     raise ValueError("Invalid BMP file: incomplete info header")
                 
-                info_header_size = struct.unpack('<I', info_size_data)[0]
+                info_header_size = self.bytes_to_uint32_le(info_size_data)
                 
                 # Read rest of info header
                 remaining_info = f.read(info_header_size - 4)
@@ -46,29 +77,43 @@ class BMPParser:
                 
                 # Parse basic info header (BITMAPINFOHEADER - 40 bytes minimum)
                 if info_header_size >= 40:
-                    info_data = info_size_data + remaining_info[:36]  # Total 40 bytes
-                    header_values = struct.unpack('<IiiHHIIiiII', info_data)
+                    # Combine all info header data
+                    full_info_data = info_size_data + remaining_info
+                    
+                    # Parse each field manually
+                    header_size = self.bytes_to_uint32_le(full_info_data, 0)
+                    width = self.bytes_to_int32_le(full_info_data, 4)
+                    height = self.bytes_to_int32_le(full_info_data, 8)
+                    planes = self.bytes_to_uint16_le(full_info_data, 12)
+                    bits_per_pixel = self.bytes_to_uint16_le(full_info_data, 14)
+                    compression = self.bytes_to_uint32_le(full_info_data, 16)
+                    image_size = self.bytes_to_uint32_le(full_info_data, 20)
+                    x_pixels_per_meter = self.bytes_to_int32_le(full_info_data, 24)
+                    y_pixels_per_meter = self.bytes_to_int32_le(full_info_data, 28)
+                    colors_used = self.bytes_to_uint32_le(full_info_data, 32)
+                    colors_important = self.bytes_to_uint32_le(full_info_data, 36)
                     
                     self.info_header = {
-                        'header_size': header_values[0],
-                        'width': header_values[1],
-                        'height': header_values[2],
-                        'planes': header_values[3],
-                        'bits_per_pixel': header_values[4],
-                        'compression': header_values[5],
-                        'image_size': header_values[6],
-                        'x_pixels_per_meter': header_values[7],
-                        'y_pixels_per_meter': header_values[8],
-                        'colors_used': header_values[9],
-                        'colors_important': header_values[10]
+                        'header_size': header_size,
+                        'width': width,
+                        'height': height,
+                        'planes': planes,
+                        'bits_per_pixel': bits_per_pixel,
+                        'compression': compression,
+                        'image_size': image_size,
+                        'x_pixels_per_meter': x_pixels_per_meter,
+                        'y_pixels_per_meter': y_pixels_per_meter,
+                        'colors_used': colors_used,
+                        'colors_important': colors_important
                     }
                 else:
                     raise ValueError("Unsupported BMP format: info header too small")
                     
         except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {self.filepath}")
+            raise FileNotFoundError("File not found: " + self.filepath)
         except Exception as e:
-            raise Exception(f"Error parsing BMP file: {str(e)}")
+            raise Exception("Error parsing BMP file: " + str(e))
+
     
     def get_summary(self) -> dict:
         """Return a dict with only the fields the GUI should display."""
