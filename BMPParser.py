@@ -162,7 +162,7 @@ class BMPParser:
         # Image dimensions and basic info
         height_abs = abs(self.info_header['height'])
         summary["Image Dimensions"] = f"{self.info_header['width']} × {height_abs} pixels"
-        summary["Color Depth"] = self.get_color_depth_description(self.info_header['bits_per_pixel'])
+        summary["Bits per pixel"] = self.get_color_depth_description(self.info_header['bits_per_pixel'])
         
         
         return summary
@@ -199,7 +199,6 @@ class BMPParser:
             print(f"  {field}: {value}")
 
 def main():
-    """CLI interface - maintained for backward compatibility"""
     try:
         import sys
         if len(sys.argv) != 2:
