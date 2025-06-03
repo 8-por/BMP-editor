@@ -120,15 +120,23 @@ class BMPApp(tk.Tk):
         file_frame.pack(fill="x", pady=(0, 10))
         ttk.Button(file_frame, text="Open BMP…", command=self.open_file).pack(side="left")
 
-        # Tabbed notebook
-        notebook = ttk.Notebook(main_frame)
+        # Split left (controls/info) and right (preview)
+        paned = ttk.PanedWindow(main_frame, orient="horizontal")
+        paned.pack(fill="both", expand=True)
+
+        left = ttk.Frame(paned)
+        paned.add(left, weight=1)
+        right = ttk.Frame(paned)
+        paned.add(right, weight=3)
+
+        # Notebook on the left with a single tab
+        notebook = ttk.Notebook(left)
         notebook.pack(fill="both", expand=True)
 
-        # ────────── Image view tab ────────── #
-        image_frame = ttk.Frame(notebook)
-        notebook.add(image_frame, text="Image View")
+        info_tab = ttk.Frame(notebook)
+        notebook.add(info_tab, text="Info & Controls")
 
-        controls_frame = ttk.LabelFrame(image_frame, text="Image Controls", padding="10")
+        controls_frame = ttk.LabelFrame(info_tab, text="Image Controls", padding="10")
         controls_frame.pack(fill="x", pady=(0, 10))
 
         # Brightness slider
@@ -166,8 +174,8 @@ class BMPApp(tk.Tk):
 
         ttk.Button(controls_frame, text="Reset All", command=self.reset_controls).pack(pady=(10, 0))
 
-        # Scrollable canvas for image
-        image_display = ttk.Frame(image_frame)
+        # Scrollable canvas for image on the right side
+        image_display = ttk.Frame(right)
         image_display.pack(fill="both", expand=True)
         canvas = tk.Canvas(image_display, bg="white")
         vbar = ttk.Scrollbar(image_display, orient="vertical", command=canvas.yview)
@@ -181,9 +189,9 @@ class BMPApp(tk.Tk):
         self.image_label = ttk.Label(canvas)
         canvas.create_window(0, 0, anchor="nw", window=self.image_label)
 
-        # ────────── Properties tab ────────── #
-        props = ttk.Frame(notebook)
-        notebook.add(props, text="Properties")
+        # Metadata tree under the same tab
+        props = ttk.LabelFrame(info_tab, text="Metadata", padding="10")
+        props.pack(fill="both", expand=True)
         self.tree = ttk.Treeview(props, columns=("field", "value"), show="headings")
         self.tree.heading("field", text="Field")
         self.tree.heading("value", text="Value")
