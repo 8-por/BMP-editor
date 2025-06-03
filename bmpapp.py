@@ -37,7 +37,7 @@ class ImageProcessor:
     def apply_brightness(self, brightness_factor: float) -> np.ndarray:
         """Return a copy of the original image with brightness scaled.
 
-        `brightness_factor` is in `[0, 2]` where 1 means *no* change (i.e. 100 %).
+        `brightness_factor` is in `[0, 1]` where 1 means *no* change (i.e. 100 %).
         """
         if self.original_pixels is None:
             raise ValueError("Image not loaded yet.")
@@ -90,7 +90,7 @@ class ImageProcessor:
 
 
 class BMPApp(tk.Tk):
-    """GUI application – unchanged except for NumPy‑powered processing."""
+    """GUI application"""
 
     def __init__(self):
         super().__init__()
@@ -137,7 +137,7 @@ class BMPApp(tk.Tk):
             label="Brightness:",
             variable=self.brightness_var,
             from_=0,
-            to=200,
+            to=100,
             command=self.update_image,
         )
 
@@ -147,7 +147,7 @@ class BMPApp(tk.Tk):
             label="Scale:",
             variable=self.scale_var,
             from_=10,
-            to=200,
+            to=100,
             command=self.update_image,
         )
 
