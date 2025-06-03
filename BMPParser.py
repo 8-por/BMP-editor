@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-import struct
-import sys
-import os
+# BMP Parser - Refactored for GUI integration
 
 class BMPParser:
     def __init__(self, filepath):
         self.filepath = filepath
         self.file_header = {}
         self.info_header = {}
-        
+        self.parsed = False
+    
     def bytes_to_uint16_le(self, data, offset=0):
+        """Convert 2 bytes to unsigned 16-bit integer (little-endian)"""
         return data[offset] + (data[offset + 1] << 8)
     
     def bytes_to_uint32_le(self, data, offset=0):
-        
+        """Convert 4 bytes to unsigned 32-bit integer (little-endian)"""
         return (data[offset] + 
                 (data[offset + 1] << 8) + 
                 (data[offset + 2] << 16) + 
@@ -26,6 +26,39 @@ class BMPParser:
         if value >= 2**31:
             value -= 2**32
         return value
+    
+    def get_compression_name(self, compression_code):
+        """Convert compression code to readable name"""
+        compressions = {
+            0: "BI_RGB (No compression)",
+            1: "BI_RLE8 (8-bit RLE)",
+            2: "BI_RLE4 (4-bit RLE)",
+            3: "BI_BITFIELDS",
+            4: "BI_JPEG",
+            5: "BI_PNG"
+        }
+        return compressions.get(compression_code, f"Unknown ({compression_code})")
+    
+    def format_file_size(self, size_bytes):
+        """Format file size in human readable format"""
+        if size_bytes < 1024:
+            return f"{size_bytes} bytes"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes:,} bytes ({size_bytes/1024:.1f} KB)"
+        else:
+            return f"{size_bytes:,} bytes ({size_bytes/1024/1024:.1f} MB)"
+    
+    def get_color_depth_description(self, bits_per_pixel):
+        """Get description of color depth"""
+        descriptions = {
+            1: "1-bit (Monochrome)",
+            4: "4-bit (16 colors)",
+            8: "8-bit (256 colors)",
+            16: "16-bit (High Color)",
+            24: "24-bit (True Color)",
+            32: "32-bit (True Color + Alpha)"
+        }
+        return descriptions.get(bits_per_pixel, f"{bits_per_pixel}-bit")
     
     def parse(self):
         """Parse the BMP file and extract header information"""
@@ -108,79 +141,80 @@ class BMPParser:
                     }
                 else:
                     raise ValueError("Unsupported BMP format: info header too small")
+                
+                self.parsed = True
                     
         except FileNotFoundError:
             raise FileNotFoundError("File not found: " + self.filepath)
         except Exception as e:
             raise Exception("Error parsing BMP file: " + str(e))
-
     
-    def get_summary(self) -> dict:
-        """Return a dict with only the fields the GUI should display."""
+    def get_summary(self):
+        """Return a dictionary of key-value pairs for GUI display"""
+        if not self.parsed:
+            raise ValueError("File not parsed yet. Call parse() first.")
+        
+        summary = {}
+        
+        # File information
+        summary["File Size"] = self.format_file_size(self.file_header['file_size'])
+        
+        # Image dimensions and basic info
+        height_abs = abs(self.info_header['height'])
+        summary["Image Dimensions"] = f"{self.info_header['width']} × {height_abs} pixels"
+        summary["Color Depth"] = self.get_color_depth_description(self.info_header['bits_per_pixel'])
+        
+        
+        return summary
+    
+    def get_raw_data(self):
+        """Return raw parsed data for advanced users"""
+        if not self.parsed:
+            raise ValueError("File not parsed yet. Call parse() first.")
+        
         return {
-            "File size":    f"{self.file_header['file_size']:,} bytes",
-            "Dimensions":   f"{self.info_header['width']} × {abs(self.info_header['height'])}",
-            "Bits/pixel":   self.info_header['bits_per_pixel'],
-            "Compression":  self.get_compression_name(self.info_header['compression']),
-            "Image size":   f"{self.info_header['image_size']:,} bytes",
+            'file_header': self.file_header,
+            'info_header': self.info_header
         }
-
-    def get_compression_name(self, compression_code):
-        """Convert compression code to readable name"""
-        compressions = {
-            0: "BI_RGB (No compression)",
-            1: "BI_RLE8 (8-bit RLE)",
-            2: "BI_RLE4 (4-bit RLE)",
-            3: "BI_BITFIELDS",
-            4: "BI_JPEG",
-            5: "BI_PNG"
-        }
-        return compressions.get(compression_code, f"Unknown ({compression_code})")
     
     def display_info(self):
-        """Display parsed BMP information"""
-        print(f"BMP File Analysis: {os.path.basename(self.filepath)}")
+        """Display parsed BMP information (for CLI compatibility)"""
+        if not self.parsed:
+            print("Error: File not parsed yet. Call parse() first.")
+            return
+            
+        # Get just the filename without path (manual implementation)
+        filename = self.filepath
+        if '/' in filename:
+            filename = filename.split('/')[-1]
+        if '\\' in filename:
+            filename = filename.split('\\')[-1]
+            
+        print("BMP File Analysis: " + filename)
         print("=" * 50)
         
-        print("\nFile Header:")
-        print(f"  Signature: {self.file_header['signature']}")
-        print(f"  File Size: {self.file_header['file_size']:,} bytes")
-        print(f"  Data Offset: {self.file_header['data_offset']} bytes")
-        
-        print("\nImage Information:")
-        print(f"  Dimensions: {self.info_header['width']} x {abs(self.info_header['height'])} pixels")
-        print(f"  Bits per Pixel: {self.info_header['bits_per_pixel']}")
-        print(f"  Compression: {self.get_compression_name(self.info_header['compression'])}")
-        print(f"  Image Size: {self.info_header['image_size']:,} bytes")
-        
-        if self.info_header['colors_used'] > 0:
-            print(f"  Colors Used: {self.info_header['colors_used']}")
-        
-        # Additional details
-        print(f"\nTechnical Details:")
-        print(f"  Color Planes: {self.info_header['planes']}")
-        print(f"  Header Size: {self.info_header['header_size']} bytes")
-        print(f"  Top-down image: {'Yes' if self.info_header['height'] < 0 else 'No'}")
-        
-        if self.info_header['x_pixels_per_meter'] > 0 or self.info_header['y_pixels_per_meter'] > 0:
-            print(f"  Resolution: {self.info_header['x_pixels_per_meter']} x {self.info_header['y_pixels_per_meter']} pixels/meter")
+        # Use the summary data for consistent formatting
+        summary = self.get_summary()
+        for field, value in summary.items():
+            print(f"  {field}: {value}")
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python bmp_parser.py <bmp_file>")
-        print("Example: python bmp_parser.py image.bmp")
-        sys.exit(1)
-    
-    filepath = sys.argv[1]
-    
+    """CLI interface - maintained for backward compatibility"""
     try:
+        import sys
+        if len(sys.argv) != 2:
+            print("Usage: python bmp_parser.py <bmp_file>")
+            print("Example: python bmp_parser.py image.bmp")
+            return
+        
+        filepath = sys.argv[1]
+        
         parser = BMPParser(filepath)
         parser.parse()
         parser.display_info()
         
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        print("Error: " + str(e))
 
 if __name__ == "__main__":
     main()
