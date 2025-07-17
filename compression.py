@@ -141,7 +141,6 @@ def load_cmpt365(path: str) -> tuple[int, int, int, bytes]:
 
     return width, height, bits_per_pixel, pixels
 
-
 def format_size(size: int) -> str:
     if size < 1024:
         return f"{size} bytes"

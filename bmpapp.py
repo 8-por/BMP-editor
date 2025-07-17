@@ -103,9 +103,11 @@ class BMPApp(tk.Tk):
         self.current_image_path: str | None = None
         self.photo: ImageTk.PhotoImage | None = None
         self.bits_per_pixel: int = 32
+
         # Raw pixel data in the image's original colour depth. ``None`` until an
         # image is loaded.  ``self.bits_per_pixel`` describes the format.
         self.raw_pixels: bytes | None = None
+
 
         # Control variables
         self.brightness_var = tk.DoubleVar(value=100.0)  # percent
@@ -283,11 +285,13 @@ class BMPApp(tk.Tk):
             self.processor.load_from_pil(pil_img_for_display)
             self.bits_per_pixel = bpp
             self.raw_pixels = pixels
+
             self.current_image_path = None
             summary = {
                 "File Size": format_size(os.path.getsize(path)),
                 "Image Dimensions": f"{width} × {height} pixels",
                 "Bits per pixel": BMPParser("").get_color_depth_description(bpp),
+
             }
             self._populate_table(summary)
             self.reset_controls()
