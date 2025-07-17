@@ -73,6 +73,7 @@ class LZW:
         return bytes(result)
 
 
+
 def save_cmpt365(
     path: str,
     width: int,
@@ -87,6 +88,7 @@ def save_cmpt365(
     bytes and compressed using LZW.
 
     Returns ``(original_size, compressed_size, elapsed_ms)``.
+
     """
     start = time.perf_counter()
     compressed, code_width = LZW.compress(pixels)
@@ -114,6 +116,7 @@ def load_cmpt365(path: str) -> tuple[int, int, int, bytes]:
 
     Returns ``(width, height, bits_per_pixel, pixel_bytes)``.
     """
+
     with open(path, "rb") as f:
         magic = f.read(4)
         if magic != b"CMPT":
@@ -122,6 +125,7 @@ def load_cmpt365(path: str) -> tuple[int, int, int, bytes]:
         alg = int.from_bytes(f.read(1), "little")
         code_width = int.from_bytes(f.read(1), "little")
         bits_per_pixel = int.from_bytes(f.read(1), "little")
+
         width = int.from_bytes(f.read(4), "little")
         height = int.from_bytes(f.read(4), "little")
         data_len = int.from_bytes(f.read(4), "little")
@@ -134,13 +138,13 @@ def load_cmpt365(path: str) -> tuple[int, int, int, bytes]:
 
     pixels = LZW.decompress(data, code_width)
 
+
     bytes_per_pixel = (bits_per_pixel + 7) // 8
     expected = width * height * bytes_per_pixel
     if len(pixels) != expected:
         raise ValueError("Decompressed data size mismatch")
 
     return width, height, bits_per_pixel, pixels
-
 
 def format_size(size: int) -> str:
     if size < 1024:

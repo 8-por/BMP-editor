@@ -255,6 +255,7 @@ class BMPApp(tk.Tk):
         if not path:
             return
         try:
+
             width, height, bpp, pixels = load_cmpt365(path)
             bytes_per_pixel = (bpp + 7) // 8
             arr = np.frombuffer(pixels, dtype=np.uint8)
@@ -269,7 +270,9 @@ class BMPApp(tk.Tk):
             summary = {
                 "File Size": format_size(os.path.getsize(path)),
                 "Image Dimensions": f"{width} × {height} pixels",
+
                 "Bits per pixel": BMPParser("").get_color_depth_description(bpp),
+
             }
             self._populate_table(summary)
             self.reset_controls()
@@ -291,9 +294,11 @@ class BMPApp(tk.Tk):
             width = self.processor.width
             height = self.processor.height
             pixels = self.processor.original_pixels.tobytes()
+
             orig, comp, ms = save_cmpt365(
                 path, width, height, self.bits_per_pixel, pixels
             )
+
             ratio = orig / comp if comp else 0
             messagebox.showinfo(
                 "Compression Complete",
