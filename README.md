@@ -115,3 +115,10 @@ def update_image(self, *_):
     self.image_label.configure(image=self.photo)
 ```
 
+### Compression Support
+
+The GUI can compress any loaded BMP image using a custom LZW-based algorithm.
+Click **Compress to .cmpt365** to save the current image in the custom format.
+Compression statistics (original size, compressed size, ratio and time) are
+shown after saving. Use **Open .cmpt365…** to open and display a previously
+saved file.
