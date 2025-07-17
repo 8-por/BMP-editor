@@ -245,15 +245,15 @@ class BMPApp(tk.Tk):
             self.bits_per_pixel = parser.info_header.get("bits_per_pixel", 32)
 
             img = Image.open(path)
-            # Store raw pixel bytes in the original colour depth so we can
-            # compress without forcing everything to 32 bits per pixel.
+            # Store raw pixel bytes.  Any non‑24/32‑bit image is converted to
+            # 24‑bit RGB for simplicity.
             if self.bits_per_pixel == 32:
                 raw = img.convert("RGBA")
             elif self.bits_per_pixel == 24:
                 raw = img.convert("RGB")
             else:
-                # Fallback – Pillow will expand paletted/1-bit images.
                 raw = img.convert("RGB")
+                self.bits_per_pixel = 24
             self.raw_pixels = raw.tobytes()
 
             # Convert to RGBA for display regardless of original depth
@@ -316,10 +316,16 @@ class BMPApp(tk.Tk):
                 pixels = self.processor.original_pixels.tobytes()
             else:
                 pixels = self.raw_pixels
+            bits = (len(pixels) * 8) // (width * height)
             orig, comp, ms = save_cmpt365(
-                path, width, height, self.bits_per_pixel, pixels
+                path, width, height, bits, pixels
             )
             ratio = orig / comp if comp else 0
+            if ratio < 1:
+                messagebox.showwarning(
+                    "Poor Compression",
+                    "Compressed file is larger than the original.",
+                )
             messagebox.showinfo(
                 "Compression Complete",
                 f"Original size: {orig} bytes\n"
