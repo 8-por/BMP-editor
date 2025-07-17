@@ -104,6 +104,11 @@ class BMPApp(tk.Tk):
         self.photo: ImageTk.PhotoImage | None = None
         self.bits_per_pixel: int = 32
 
+        # Raw pixel data in the image's original colour depth. ``None`` until an
+        # image is loaded.  ``self.bits_per_pixel`` describes the format.
+        self.raw_pixels: bytes | None = None
+
+
         # Control variables
         self.brightness_var = tk.DoubleVar(value=100.0)  # percent
         self.scale_var = tk.DoubleVar(value=100.0)       # percent
@@ -240,7 +245,19 @@ class BMPApp(tk.Tk):
             self.bits_per_pixel = parser.info_header.get("bits_per_pixel", 32)
 
             img = Image.open(path)
-            self.processor.load_from_pil(img)
+            # Store raw pixel bytes in the original colour depth so we can
+            # compress without forcing everything to 32 bits per pixel.
+            if self.bits_per_pixel == 32:
+                raw = img.convert("RGBA")
+            elif self.bits_per_pixel == 24:
+                raw = img.convert("RGB")
+            else:
+                # Fallback – Pillow will expand paletted/1-bit images.
+                raw = img.convert("RGB")
+            self.raw_pixels = raw.tobytes()
+
+            # Convert to RGBA for display regardless of original depth
+            self.processor.load_from_pil(img.convert("RGBA"))
             self.current_image_path = path
             self.reset_controls()
             self.update_image()
@@ -255,7 +272,6 @@ class BMPApp(tk.Tk):
         if not path:
             return
         try:
-
             width, height, bpp, pixels = load_cmpt365(path)
             bytes_per_pixel = (bpp + 7) // 8
             arr = np.frombuffer(pixels, dtype=np.uint8)
@@ -263,14 +279,17 @@ class BMPApp(tk.Tk):
             mode = "RGBA" if bytes_per_pixel == 4 else "RGB"
             pil_img = Image.fromarray(arr, mode=mode)
             if mode != "RGBA":
-                pil_img = pil_img.convert("RGBA")
-            self.processor.load_from_pil(pil_img)
+                pil_img_for_display = pil_img.convert("RGBA")
+            else:
+                pil_img_for_display = pil_img
+            self.processor.load_from_pil(pil_img_for_display)
             self.bits_per_pixel = bpp
+            self.raw_pixels = pixels
+
             self.current_image_path = None
             summary = {
                 "File Size": format_size(os.path.getsize(path)),
                 "Image Dimensions": f"{width} × {height} pixels",
-
                 "Bits per pixel": BMPParser("").get_color_depth_description(bpp),
 
             }
@@ -293,12 +312,13 @@ class BMPApp(tk.Tk):
         try:
             width = self.processor.width
             height = self.processor.height
-            pixels = self.processor.original_pixels.tobytes()
-
+            if self.raw_pixels is None:
+                pixels = self.processor.original_pixels.tobytes()
+            else:
+                pixels = self.raw_pixels
             orig, comp, ms = save_cmpt365(
                 path, width, height, self.bits_per_pixel, pixels
             )
-
             ratio = orig / comp if comp else 0
             messagebox.showinfo(
                 "Compression Complete",
