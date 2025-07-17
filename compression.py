@@ -94,6 +94,80 @@ class LZMA:
         return bytes(out)
 
 
+class LZMA:
+    """Very small LZMA-like compressor using a simple LZ77 scheme.
+
+    This is **not** a full LZMA implementation but provides a minimal
+    dictionary based compressor so the application can operate without
+    external libraries.
+    """
+
+    WINDOW_SIZE = 4096
+    MIN_MATCH = 3
+    MAX_MATCH = 255
+
+    @staticmethod
+    def compress(data: bytes) -> bytes:
+        out = bytearray()
+        i = 0
+        length = len(data)
+        while i < length:
+            window_start = max(0, i - LZMA.WINDOW_SIZE)
+            match_len = 0
+            match_dist = 0
+            # Search for longest match in window
+            for dist in range(1, i - window_start + 1):
+                j = 0
+                while (
+                    j < LZMA.MAX_MATCH
+                    and i + j < length
+                    and data[i - dist + j] == data[i + j]
+                ):
+                    j += 1
+                if j > match_len:
+                    match_len = j
+                    match_dist = dist
+            if match_len >= LZMA.MIN_MATCH:
+                out.append(1)
+                out.extend(match_dist.to_bytes(2, "big"))
+                out.append(match_len)
+                i += match_len
+            else:
+                out.append(0)
+                out.append(data[i])
+                i += 1
+        return bytes(out)
+
+    @staticmethod
+    def decompress(data: bytes) -> bytes:
+        out = bytearray()
+        i = 0
+        length = len(data)
+        while i < length:
+            flag = data[i]
+            i += 1
+            if flag == 0:
+                if i >= length:
+                    raise ValueError("Corrupted LZMA data")
+                out.append(data[i])
+                i += 1
+            elif flag == 1:
+                if i + 2 >= length:
+                    raise ValueError("Corrupted LZMA data")
+                dist = int.from_bytes(data[i : i + 2], "big")
+                i += 2
+                match_len = data[i]
+                i += 1
+                if dist == 0 or match_len == 0 or dist > len(out):
+                    raise ValueError("Corrupted LZMA data")
+                start = len(out) - dist
+                for j in range(match_len):
+                    out.append(out[start + j])
+            else:
+                raise ValueError("Invalid LZMA flag")
+        return bytes(out)
+
+
 class LZW:
     @staticmethod
     def compress(data: bytes) -> tuple[bytes, int]:
