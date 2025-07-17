@@ -73,10 +73,22 @@ class LZW:
         return bytes(result)
 
 
-def save_cmpt365(path: str, width: int, height: int, pixels: bytes) -> tuple[int, int, int]:
-    """Compress and save raw RGBA pixel bytes to a .cmpt365 file.
 
-    Returns (original_size, compressed_size, elapsed_ms).
+def save_cmpt365(
+    path: str,
+    width: int,
+    height: int,
+    bits_per_pixel: int,
+    pixels: bytes,
+) -> tuple[int, int, int]:
+    """Compress and save raw pixel bytes to a ``.cmpt365`` file.
+
+    ``bits_per_pixel`` records the original colour depth so the viewer can
+    display accurate metadata.  The pixel data itself is always stored as
+    bytes and compressed using LZW.
+
+    Returns ``(original_size, compressed_size, elapsed_ms)``.
+
     """
     start = time.perf_counter()
     compressed, code_width = LZW.compress(pixels)
@@ -86,8 +98,8 @@ def save_cmpt365(path: str, width: int, height: int, pixels: bytes) -> tuple[int
     header.extend(b"CMPT")  # magic
     header.append(1)  # version
     header.append(1)  # algorithm id for LZW
-    header.append(code_width)  # bytes per code
-    header.append(0)  # reserved
+    header.append(code_width)  # bytes per LZW code
+    header.append(bits_per_pixel & 0xFF)  # original colour depth
     header.extend(width.to_bytes(4, "little"))
     header.extend(height.to_bytes(4, "little"))
     header.extend(len(compressed).to_bytes(4, "little"))
@@ -99,8 +111,12 @@ def save_cmpt365(path: str, width: int, height: int, pixels: bytes) -> tuple[int
     return len(pixels), len(header) + len(compressed), elapsed_ms
 
 
-def load_cmpt365(path: str) -> tuple[int, int, bytes]:
-    """Load a .cmpt365 file and return (width, height, pixel_bytes)."""
+def load_cmpt365(path: str) -> tuple[int, int, int, bytes]:
+    """Load a ``.cmpt365`` file.
+
+    Returns ``(width, height, bits_per_pixel, pixel_bytes)``.
+    """
+
     with open(path, "rb") as f:
         magic = f.read(4)
         if magic != b"CMPT":
@@ -108,7 +124,8 @@ def load_cmpt365(path: str) -> tuple[int, int, bytes]:
         version = int.from_bytes(f.read(1), "little")
         alg = int.from_bytes(f.read(1), "little")
         code_width = int.from_bytes(f.read(1), "little")
-        f.read(1)  # reserved
+        bits_per_pixel = int.from_bytes(f.read(1), "little")
+
         width = int.from_bytes(f.read(4), "little")
         height = int.from_bytes(f.read(4), "little")
         data_len = int.from_bytes(f.read(4), "little")
@@ -120,11 +137,14 @@ def load_cmpt365(path: str) -> tuple[int, int, bytes]:
         raise ValueError("Unsupported compression algorithm")
 
     pixels = LZW.decompress(data, code_width)
-    expected = width * height * 4
+
+
+    bytes_per_pixel = (bits_per_pixel + 7) // 8
+    expected = width * height * bytes_per_pixel
     if len(pixels) != expected:
         raise ValueError("Decompressed data size mismatch")
-    return width, height, pixels
 
+    return width, height, bits_per_pixel, pixels
 
 def format_size(size: int) -> str:
     if size < 1024:

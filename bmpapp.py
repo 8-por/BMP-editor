@@ -102,6 +102,7 @@ class BMPApp(tk.Tk):
         self.processor = ImageProcessor()
         self.current_image_path: str | None = None
         self.photo: ImageTk.PhotoImage | None = None
+        self.bits_per_pixel: int = 32
 
         # Control variables
         self.brightness_var = tk.DoubleVar(value=100.0)  # percent
@@ -236,6 +237,7 @@ class BMPApp(tk.Tk):
             parser = BMPParser(path)
             parser.parse()
             self._populate_table(parser.get_summary())
+            self.bits_per_pixel = parser.info_header.get("bits_per_pixel", 32)
 
             img = Image.open(path)
             self.processor.load_from_pil(img)
@@ -253,15 +255,24 @@ class BMPApp(tk.Tk):
         if not path:
             return
         try:
-            width, height, pixels = load_cmpt365(path)
-            arr = np.frombuffer(pixels, dtype=np.uint8).reshape((height, width, 4))
-            pil_img = Image.fromarray(arr, mode="RGBA")
+
+            width, height, bpp, pixels = load_cmpt365(path)
+            bytes_per_pixel = (bpp + 7) // 8
+            arr = np.frombuffer(pixels, dtype=np.uint8)
+            arr = arr.reshape((height, width, bytes_per_pixel))
+            mode = "RGBA" if bytes_per_pixel == 4 else "RGB"
+            pil_img = Image.fromarray(arr, mode=mode)
+            if mode != "RGBA":
+                pil_img = pil_img.convert("RGBA")
             self.processor.load_from_pil(pil_img)
+            self.bits_per_pixel = bpp
             self.current_image_path = None
             summary = {
                 "File Size": format_size(os.path.getsize(path)),
                 "Image Dimensions": f"{width} × {height} pixels",
-                "Bits per pixel": "32-bit (True Color + Alpha)",
+
+                "Bits per pixel": BMPParser("").get_color_depth_description(bpp),
+
             }
             self._populate_table(summary)
             self.reset_controls()
@@ -283,7 +294,11 @@ class BMPApp(tk.Tk):
             width = self.processor.width
             height = self.processor.height
             pixels = self.processor.original_pixels.tobytes()
-            orig, comp, ms = save_cmpt365(path, width, height, pixels)
+
+            orig, comp, ms = save_cmpt365(
+                path, width, height, self.bits_per_pixel, pixels
+            )
+
             ratio = orig / comp if comp else 0
             messagebox.showinfo(
                 "Compression Complete",
