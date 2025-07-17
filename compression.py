@@ -4,6 +4,95 @@ from __future__ import annotations
 
 import time
 
+import numpy as np
+
+
+class LZMA:
+    """Very small LZMA-like compressor using a simple LZ77 scheme.
+
+    This is **not** a full LZMA implementation but provides a minimal
+    dictionary based compressor so the application can operate without
+    external libraries.
+    """
+
+    WINDOW_SIZE = 4096
+    MIN_MATCH = 3
+    MAX_MATCH = 255
+
+    @staticmethod
+    def _match_length(arr: np.ndarray, pos: int, dist: int) -> int:
+        """Return match length of ``arr[pos:]`` with ``arr[pos-dist:]``."""
+        max_len = min(LZMA.MAX_MATCH, arr.size - pos, dist)
+        if max_len <= 0:
+            return 0
+        a = arr[pos : pos + max_len]
+        b = arr[pos - dist : pos - dist + max_len]
+        cmp = a == b
+        # find index of first mismatch
+        if not np.all(cmp):
+            return int(np.argmax(~cmp))
+        return int(max_len)
+
+    @staticmethod
+    def compress(data: bytes) -> bytes:
+        """Compress ``data`` using a small LZ77 scheme accelerated with NumPy."""
+        arr = np.frombuffer(data, dtype=np.uint8)
+        out = bytearray()
+        i = 0
+        n = arr.size
+        while i < n:
+            window_start = max(0, i - LZMA.WINDOW_SIZE)
+            match_len = 0
+            match_dist = 0
+            for dist in range(1, i - window_start + 1):
+                length = LZMA._match_length(arr, i, dist)
+                if length > match_len:
+                    match_len = length
+                    match_dist = dist
+                    if match_len == LZMA.MAX_MATCH:
+                        break
+            if match_len >= LZMA.MIN_MATCH:
+                out.append(1)
+                out.extend(match_dist.to_bytes(2, "big"))
+                out.append(match_len)
+                i += match_len
+            else:
+                out.append(0)
+                out.append(int(arr[i]))
+                i += 1
+        return bytes(out)
+
+    @staticmethod
+    def decompress(data: bytes) -> bytes:
+        """Decompress bytes produced by :meth:`compress`."""
+        arr = np.frombuffer(data, dtype=np.uint8)
+        out = bytearray()
+        i = 0
+        n = arr.size
+        while i < n:
+            flag = int(arr[i])
+            i += 1
+            if flag == 0:
+                if i >= n:
+                    raise ValueError("Corrupted LZMA data")
+                out.append(int(arr[i]))
+                i += 1
+            elif flag == 1:
+                if i + 2 >= n:
+                    raise ValueError("Corrupted LZMA data")
+                dist = (int(arr[i]) << 8) | int(arr[i + 1])
+                i += 2
+                match_len = int(arr[i])
+                i += 1
+                if dist == 0 or match_len == 0 or dist > len(out):
+                    raise ValueError("Corrupted LZMA data")
+                start = len(out) - dist
+                segment = np.frombuffer(bytes(out), dtype=np.uint8)[start : start + match_len]
+                out.extend(segment.tobytes())
+            else:
+                raise ValueError("Invalid LZMA flag")
+        return bytes(out)
+
 
 class LZMA:
     """Very small LZMA-like compressor using a simple LZ77 scheme.
