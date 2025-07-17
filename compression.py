@@ -7,13 +7,16 @@ import time
 
 class LZW:
     @staticmethod
-    def compress(data: bytes) -> bytes:
-        """Compress bytes using a basic LZW algorithm with 16-bit codes."""
+    def compress(data: bytes) -> tuple[bytes, int]:
+        """Compress bytes using a basic LZW algorithm.
+
+        Returns a tuple of (compressed_bytes, bytes_per_code)."""
         # Initialize dictionary with single-byte entries
         dictionary: dict[bytes, int] = {bytes([i]): i for i in range(256)}
         next_code = 256
         w = b""
         codes: list[int] = []
+        max_code = 255
         for byte in data:
             k = bytes([byte])
             wk = w + k
@@ -22,23 +25,33 @@ class LZW:
             else:
                 codes.append(dictionary[w])
                 dictionary[wk] = next_code
+                max_code = max(max_code, next_code)
                 next_code += 1
                 w = k
         if w:
             codes.append(dictionary[w])
+            max_code = max(max_code, dictionary[w])
 
-        # Pack codes into big-endian 16-bit integers
+        if max_code <= 0xFFFF:
+            width = 2
+        elif max_code <= 0xFFFFFF:
+            width = 3
+        else:
+            width = 4
+
         out = bytearray()
         for code in codes:
-            out.extend(code.to_bytes(2, "big"))
-        return bytes(out)
+            out.extend(code.to_bytes(width, "big"))
+        return bytes(out), width
 
     @staticmethod
-    def decompress(data: bytes) -> bytes:
-        """Decompress bytes produced by `compress`."""
-        if len(data) % 2 != 0:
+    def decompress(data: bytes, width: int) -> bytes:
+        """Decompress bytes produced by `compress` using ``width`` bytes per code."""
+        if width not in (2, 3, 4):
+            raise ValueError("Invalid code width")
+        if len(data) % width != 0:
             raise ValueError("Corrupted LZW data length")
-        codes = [int.from_bytes(data[i:i+2], "big") for i in range(0, len(data), 2)]
+        codes = [int.from_bytes(data[i:i+width], "big") for i in range(0, len(data), width)]
         if not codes:
             return b""
         dictionary: dict[int, bytes] = {i: bytes([i]) for i in range(256)}
@@ -66,14 +79,15 @@ def save_cmpt365(path: str, width: int, height: int, pixels: bytes) -> tuple[int
     Returns (original_size, compressed_size, elapsed_ms).
     """
     start = time.perf_counter()
-    compressed = LZW.compress(pixels)
+    compressed, code_width = LZW.compress(pixels)
     elapsed_ms = int((time.perf_counter() - start) * 1000)
 
     header = bytearray()
     header.extend(b"CMPT")  # magic
     header.append(1)  # version
     header.append(1)  # algorithm id for LZW
-    header.extend(b"\x00\x00")  # reserved
+    header.append(code_width)  # bytes per code
+    header.append(0)  # reserved
     header.extend(width.to_bytes(4, "little"))
     header.extend(height.to_bytes(4, "little"))
     header.extend(len(compressed).to_bytes(4, "little"))
@@ -93,7 +107,8 @@ def load_cmpt365(path: str) -> tuple[int, int, bytes]:
             raise ValueError("Invalid CMPT file")
         version = int.from_bytes(f.read(1), "little")
         alg = int.from_bytes(f.read(1), "little")
-        f.read(2)  # reserved
+        code_width = int.from_bytes(f.read(1), "little")
+        f.read(1)  # reserved
         width = int.from_bytes(f.read(4), "little")
         height = int.from_bytes(f.read(4), "little")
         data_len = int.from_bytes(f.read(4), "little")
@@ -104,7 +119,7 @@ def load_cmpt365(path: str) -> tuple[int, int, bytes]:
     if alg != 1:
         raise ValueError("Unsupported compression algorithm")
 
-    pixels = LZW.decompress(data)
+    pixels = LZW.decompress(data, code_width)
     expected = width * height * 4
     if len(pixels) != expected:
         raise ValueError("Decompressed data size mismatch")

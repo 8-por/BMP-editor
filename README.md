@@ -120,5 +120,7 @@ def update_image(self, *_):
 The GUI can compress any loaded BMP image using a custom LZW-based algorithm.
 Click **Compress to .cmpt365** to save the current image in the custom format.
 Compression statistics (original size, compressed size, ratio and time) are
-shown after saving. Use **Open .cmpt365…** to open and display a previously
+shown after saving. The `.cmpt365` header stores image dimensions and the
+number of bytes used per LZW code (2–4), so decompression can reliably
+reconstruct the pixels. Use **Open .cmpt365…** to open and display a previously
 saved file.
