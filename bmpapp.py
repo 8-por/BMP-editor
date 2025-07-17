@@ -3,6 +3,8 @@ from tkinter import ttk, filedialog, messagebox
 from BMPParser import BMPParser
 from PIL import Image, ImageTk
 import numpy as np
+import os
+from compression import save_cmpt365, load_cmpt365, format_size
 
 
 class ImageProcessor:
@@ -100,6 +102,7 @@ class BMPApp(tk.Tk):
         self.processor = ImageProcessor()
         self.current_image_path: str | None = None
         self.photo: ImageTk.PhotoImage | None = None
+        self.bits_per_pixel: int = 32
 
         # Control variables
         self.brightness_var = tk.DoubleVar(value=100.0)  # percent
@@ -119,6 +122,8 @@ class BMPApp(tk.Tk):
         file_frame = ttk.Frame(main_frame)
         file_frame.pack(fill="x", pady=(0, 10))
         ttk.Button(file_frame, text="Open BMP…", command=self.open_file).pack(side="left")
+        ttk.Button(file_frame, text="Open .cmpt365…", command=self.open_cmpt_file).pack(side="left", padx=(10, 0))
+        ttk.Button(file_frame, text="Compress to .cmpt365", command=self.compress_current_image).pack(side="left", padx=(10, 0))
 
         # Split left (controls/info) and right (preview)
         paned = ttk.PanedWindow(main_frame, orient="horizontal")
@@ -232,12 +237,71 @@ class BMPApp(tk.Tk):
             parser = BMPParser(path)
             parser.parse()
             self._populate_table(parser.get_summary())
+            self.bits_per_pixel = parser.info_header.get("bits_per_pixel", 32)
 
             img = Image.open(path)
             self.processor.load_from_pil(img)
             self.current_image_path = path
             self.reset_controls()
             self.update_image()
+        except Exception as exc:
+            messagebox.showerror("Error", str(exc))
+
+    def open_cmpt_file(self):
+        path = filedialog.askopenfilename(
+            title="Open .cmpt365",
+            filetypes=[("CMPT365 Image", "*.cmpt365"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            width, height, bpp, pixels = load_cmpt365(path)
+            bytes_per_pixel = (bpp + 7) // 8
+            arr = np.frombuffer(pixels, dtype=np.uint8)
+            arr = arr.reshape((height, width, bytes_per_pixel))
+            mode = "RGBA" if bytes_per_pixel == 4 else "RGB"
+            pil_img = Image.fromarray(arr, mode=mode)
+            if mode != "RGBA":
+                pil_img = pil_img.convert("RGBA")
+            self.processor.load_from_pil(pil_img)
+            self.bits_per_pixel = bpp
+            self.current_image_path = None
+            summary = {
+                "File Size": format_size(os.path.getsize(path)),
+                "Image Dimensions": f"{width} × {height} pixels",
+                "Bits per pixel": BMPParser("").get_color_depth_description(bpp),
+            }
+            self._populate_table(summary)
+            self.reset_controls()
+            self.update_image()
+        except Exception as exc:
+            messagebox.showerror("Error", str(exc))
+
+    def compress_current_image(self):
+        if self.processor.original_pixels is None:
+            messagebox.showerror("Error", "No image loaded")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".cmpt365",
+            filetypes=[("CMPT365 Image", "*.cmpt365"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            width = self.processor.width
+            height = self.processor.height
+            pixels = self.processor.original_pixels.tobytes()
+            orig, comp, ms = save_cmpt365(
+                path, width, height, self.bits_per_pixel, pixels
+            )
+            ratio = orig / comp if comp else 0
+            messagebox.showinfo(
+                "Compression Complete",
+                f"Original size: {orig} bytes\n"
+                f"Compressed size: {comp} bytes\n"
+                f"Compression ratio: {ratio:.2f}\n"
+                f"Time: {ms} ms",
+            )
         except Exception as exc:
             messagebox.showerror("Error", str(exc))
 
